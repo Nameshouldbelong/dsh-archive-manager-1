@@ -4,62 +4,11 @@ import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import { hostTestOverrides } from "./host-test-dependencies.mjs";
+import { hostTestOverrides, hostProfiles as profiles, cordisPlugins } from "./host-test-dependencies.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-// 支持范围：0.2.x 的全部 RC + 最新一个 alpha；中间的 alpha 不纳入支持矩阵。
-const profiles = [
-	{ version: "0.2.0-rc.1", cordis: "4.0.4", schemastery: "3.18.4", latest: true },
-	{ version: "0.2.0-rc.2", cordis: "4.0.4", schemastery: "3.18.4", latest: true },
-	{ version: "0.2.1-rc.1", cordis: "4.0.5", schemastery: "3.18.5", latest: true },
-	{ version: "0.2.1-rc.2", cordis: "4.0.5", schemastery: "3.18.5", latest: true },
-	{ version: "0.2.1-rc.3", cordis: "4.0.5", schemastery: "3.18.5", latest: true },
-	{ version: "0.2.1-rc.4", cordis: "4.0.5", schemastery: "3.18.5", latest: true },
-	{ version: "0.2.1-rc.5", cordis: "4.0.5", schemastery: "3.18.5", latest: true },
-	{ version: "0.2.2-rc.1", cordis: "4.1.0", schemastery: "3.19.0", latest: true },
-];
-const cordisPlugins = {
-	"4.0.4": {
-		"@deepseek-ai/cordis-plugin-group": "1.0.4",
-		"@deepseek-ai/cordis-plugin-hmr": "1.0.19",
-		"@deepseek-ai/cordis-plugin-include": "1.0.9",
-		"@deepseek-ai/cordis-plugin-loader": "1.0.5",
-		"@deepseek-ai/cordis-plugin-timer": "1.1.6",
-	},
-	"4.0.5": {
-		"@deepseek-ai/cordis-plugin-group": "1.0.5",
-		"@deepseek-ai/cordis-plugin-hmr": "1.0.20",
-		"@deepseek-ai/cordis-plugin-include": "1.0.10",
-		"@deepseek-ai/cordis-plugin-loader": "1.0.6",
-		"@deepseek-ai/cordis-plugin-timer": "1.1.7",
-	},
-	"4.1.0": {
-		"@deepseek-ai/cordis-plugin-group": "1.1.0",
-		"@deepseek-ai/cordis-plugin-hmr": "1.1.0",
-		"@deepseek-ai/cordis-plugin-include": "1.1.0",
-		"@deepseek-ai/cordis-plugin-loader": "1.1.0",
-		"@deepseek-ai/cordis-plugin-timer": "1.2.0",
-	},
-	"4.0.6-alpha.1": {
-		"@deepseek-ai/cordis-plugin-group": "1.0.6-alpha.1",
-		"@deepseek-ai/cordis-plugin-hmr": "1.0.21-alpha.1",
-		"@deepseek-ai/cordis-plugin-include": "1.0.11-alpha.1",
-		"@deepseek-ai/cordis-plugin-loader": "1.0.7-alpha.1",
-		"@deepseek-ai/cordis-plugin-timer": "1.1.8-alpha.1",
-	},
-	"4.0.6-alpha.2": {
-		"@deepseek-ai/cordis-plugin-group": "1.0.6-alpha.2",
-		"@deepseek-ai/cordis-plugin-hmr": "1.0.21-alpha.2",
-		"@deepseek-ai/cordis-plugin-include": "1.0.11-alpha.2",
-		"@deepseek-ai/cordis-plugin-loader": "1.0.7-alpha.2",
-		"@deepseek-ai/cordis-plugin-timer": "1.1.8-alpha.2",
-	},
-};
 const npm = process.platform === "win32" ? process.execPath : "npm";
-for (const generation of [1, 2]) {
-	cordisPlugins[`4.0.5-alpha.${generation}`] = Object.fromEntries(Object.entries(cordisPlugins["4.0.5"]).map(([name, version]) => [name, `${version}-alpha.${generation}`]));
-}
 const npmPrefix = process.platform === "win32" ? [join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js")] : [];
 const testNames = (await readdir(join(root, "test"))).filter((name) => name.endsWith(".test.mjs"));
 
@@ -105,7 +54,7 @@ for (const profile of profiles) {
 		for (const file of ["package.json", "tsconfig.json", ".gitattributes", "README.md", "README.zh-CN.md", "README.en.md", "CHANGELOG.md", "CHANGELOG.zh-CN.md", "LICENSE", "cordis.patch.yml"]) {
 			await cp(join(root, file), join(isolated, file));
 		}
-		const output = await run(process.execPath, ["--import", "tsx", "--test", "--test-reporter=spec", ...testNames.map((name) => join("test", name)), join("test", "fixtures", "latest-host.mjs"), join("test", "fixtures", "projcache-json.mjs"), join("test", "fixtures", "issue88-native.mjs"), join("test", "fixtures", "session-refresh-host.mjs")], isolated, { ...process.env, DSH_ARCHIVE_TEST_HOST_VERSION: profile.version });
+		const output = await run(process.execPath, ["--import", "tsx", "--test", "--test-concurrency=1", "--test-reporter=spec", ...testNames.map((name) => join("test", name)), join("test", "fixtures", "latest-host.mjs"), join("test", "fixtures", "projcache-json.mjs"), join("test", "fixtures", "issue88-native.mjs"), join("test", "fixtures", "session-refresh-host.mjs")], isolated, { ...process.env, DSH_ARCHIVE_TEST_HOST_VERSION: profile.version });
 		console.log(output.trim().split(/\r?\n/).slice(-8).join("\n"));
 	} catch (error) {
 		console.error(`DSH ${profile.version} 回归失败：${String(error)}`);

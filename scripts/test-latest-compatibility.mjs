@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import { hostTestOverrides } from "./host-test-dependencies.mjs";
+import { hostTestOverrides, getHostProfile, getCordisPlugins } from "./host-test-dependencies.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const isolated = await mkdtemp(join(tmpdir(), "dsh-am-latest-compat-"));
@@ -20,18 +20,13 @@ function run(command, args, env = process.env) {
 	});
 }
 try {
+	const profile = getHostProfile(version);
 	const dependencies = Object.fromEntries([
 		"session", "session-persistence", "session-persistence-jsonl", "session-format-catalog", "session-format-v3-to-v4", "session-query", "session-projection", "session-projection-cache", "workspace", "spill-local", "typert-protocol", "typert-registry"
 	].map((name) => [`@deepseek-ai/dsh-${name}`, version]));
-	dependencies["@deepseek-ai/cordis"] = manifest.devDependencies["@deepseek-ai/cordis"];
-	dependencies["@deepseek-ai/schemastery"] = "3.18.5";
-	Object.assign(dependencies, {
-		"@deepseek-ai/cordis-plugin-group": "1.0.5",
-		"@deepseek-ai/cordis-plugin-hmr": "1.0.20",
-		"@deepseek-ai/cordis-plugin-include": "1.0.10",
-		"@deepseek-ai/cordis-plugin-loader": "1.0.6",
-		"@deepseek-ai/cordis-plugin-timer": "1.1.7",
-	});
+	dependencies["@deepseek-ai/cordis"] = profile.cordis;
+	dependencies["@deepseek-ai/schemastery"] = profile.schemastery;
+	Object.assign(dependencies, getCordisPlugins(profile.cordis));
 	await writeFile(join(isolated, "package.json"), JSON.stringify({ private: true, type: "module", dependencies, overrides: hostTestOverrides(version) }), "utf8");
 	await cp(join(root, "lib"), join(isolated, "lib"), { recursive: true });
 	await mkdir(join(isolated, "test", "fixtures"), { recursive: true });
@@ -41,7 +36,7 @@ try {
 	await run(npm, [...npmPrefix, "install", "--ignore-scripts", "--no-audit", "--no-fund"]);
 	// POSIX 路径验证真实 flock；Windows 夹具使用真实 Koffi 锁，不加载 POSIX 扩展。
 	if (process.platform !== "win32") await run(npm, [...npmPrefix, "rebuild", "fs-ext"]);
-	await run(process.execPath, ["--test", "test/fixtures/latest-host.mjs"], { ...process.env, DSH_ARCHIVE_TEST_HOST_VERSION: version });
+	await run(process.execPath, ["--test", "--test-concurrency=1", "test/fixtures/latest-host.mjs"], { ...process.env, DSH_ARCHIVE_TEST_HOST_VERSION: version });
 } finally {
 	await rm(isolated, { recursive: true, force: true, maxRetries: 3 });
 }

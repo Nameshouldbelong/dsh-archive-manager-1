@@ -33,7 +33,7 @@
   ],
   "scripts": {
     "build": "pnpm typecheck && node scripts/build.mjs && node scripts/check-package.mjs",
-    "test": "pnpm build && node --import tsx --test test/*.test.mjs",
+    "test": "pnpm build && node --import tsx --test test/*.test.mjs --test-concurrency=1",
     "test:matrix": "pnpm build && node scripts/test-version-matrix.mjs",
     "test:latest": "pnpm build && node scripts/test-latest-compatibility.mjs",
     "test:compat": "pnpm build && pnpm test:matrix",
